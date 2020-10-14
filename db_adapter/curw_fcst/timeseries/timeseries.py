@@ -9,6 +9,7 @@ from db_adapter.logger import logger
 from db_adapter.exceptions import DatabaseAdapterError, DuplicateEntryError
 from db_adapter.constants import COMMON_DATE_TIME_FORMAT
 
+
 class Timeseries:
     def __init__(self, pool):
         self.pool = pool
@@ -62,11 +63,11 @@ class Timeseries:
                 sql_statement = "SELECT 1 FROM `run` WHERE `id`=%s"
                 is_exist = cursor.execute(sql_statement, event_id)
             return event_id if is_exist > 0 else None
-        except Exception as ex:
+        except Exception as exception:
             error_message = "Retrieving timeseries id for metadata={} failed.".format(meta_data)
             logger.error(error_message)
             traceback.print_exc()
-            raise DatabaseAdapterError(error_message, ex)
+            raise exception
         finally:
             if connection is not None:
                 connection.close()
@@ -83,7 +84,7 @@ class Timeseries:
                 sql_statement = "SELECT 1 FROM `run` WHERE `id`=%s"
                 is_exist = cursor.execute(sql_statement, id_)
             return True if is_exist > 0 else False
-        except Exception as ex:
+        except Exception as exception:
             error_message = "Check operation to find timeseries id {} in the run table failed.".format(id_)
             logger.error(error_message)
             traceback.print_exc()
@@ -114,13 +115,13 @@ class Timeseries:
                 row_count = cursor.executemany(sql_statement, timeseries)
             connection.commit()
             return row_count
-        except Exception as ex:
+        except Exception as exception:
             connection.rollback()
             error_message = "Data insertion to data table for tms id {}, upsert={} failed.".format(timeseries[0][0],
                     upsert)
             logger.error(error_message)
             traceback.print_exc()
-            raise DatabaseAdapterError(error_message, ex)
+            raise exception
 
         finally:
             if connection is not None:
@@ -161,13 +162,13 @@ class Timeseries:
                 row_count = cursor.executemany(sql_statement, new_timeseries)
             connection.commit()
             return row_count
-        except Exception as ex:
+        except Exception as exception:
             connection.rollback()
             error_message = "Data insertion to data table for tms id {}, upsert={} failed.".format(timeseries[0][0],
                     upsert)
             logger.error(error_message)
             traceback.print_exc()
-            raise DatabaseAdapterError(error_message, ex)
+            raise exception
 
         finally:
             if connection is not None:
@@ -212,14 +213,14 @@ class Timeseries:
         #         logger.error(error_message)
         #         traceback.print_exc()
         #         raise DatabaseAdapterError(error_message, ie)
-        except Exception as ex:
+        except Exception as exception:
             connection.rollback()
             error_message = "Insertion failed for timeseries with tms_id={}, sim_tag={}, station_id={}, source_id={}," \
                             " variable_id={}, unit_id={}" \
                 .format(run_tuple[0], run_tuple[1], run_tuple[4], run_tuple[5], run_tuple[6], run_tuple[7])
             logger.error(error_message)
             traceback.print_exc()
-            raise DatabaseAdapterError(error_message, ex)
+            raise exception
         finally:
             if connection is not None:
                 connection.close()
@@ -243,14 +244,14 @@ class Timeseries:
     #
     #         connection.commit()
     #         return run_tuple[0]
-    #     except Exception as ex:
+    #     except Exception as exception:
     #         connection.rollback()
     #         error_message = "Insertion failed for run enty with tms_id={}, sim_tag={}, station_id={}, source_id={}," \
     #                         " variable_id={}, unit_id={}" \
     #             .format(run_tuple[0], run_tuple[1], run_tuple[4], run_tuple[5], run_tuple[6], run_tuple[7])
     #         logger.error(error_message)
     #         traceback.print_exc()
-    #         raise DatabaseAdapterError(error_message, ex)
+    #         raise exception
     #     finally:
     #         if connection is not None:
     #             connection.close()
@@ -285,7 +286,7 @@ class Timeseries:
 
             connection.commit()
             return run_meta.get('tms_id')
-        except Exception as ex:
+        except Exception as exception:
             connection.rollback()
             error_message = "Insertion failed for run enty with tms_id={}, sim_tag={}, station_id={}, source_id={}," \
                             " variable_id={}, unit_id={}" \
@@ -293,7 +294,7 @@ class Timeseries:
                     run_meta.get('source_id'), run_meta.get('variable_id'), run_meta.get('unit_id'))
             logger.error(error_message)
             traceback.print_exc()
-            raise DatabaseAdapterError(error_message, ex)
+            raise exception
         finally:
             if connection is not None:
                 connection.close()
@@ -326,17 +327,74 @@ class Timeseries:
 
             connection.commit()
             return
-        except Exception as ex:
+        except Exception as exception:
             connection.rollback()
             error_message = "Updating fgt for id={} failed.".format(id_)
             logger.error(error_message)
             traceback.print_exc()
-            raise DatabaseAdapterError(error_message, ex)
+            raise exception
         finally:
             if connection is not None:
                 connection.close()
 
-    def update_start_date(self, id_, start_date):
+    def get_latest_fgt(self, id_):
+        """
+        Retrive latest fgt for given id
+        :param id_: timeseries id
+        :return:
+        """
+
+        connection = self.pool.connection()
+
+        try:
+
+            with connection.cursor() as cursor:
+                sql_statement = "SELECT `end_date` FROM `run` WHERE `id`=%s"
+                row_count= cursor.execute(sql_statement, id_)
+                if row_count > 0:
+                    return cursor.fetchone()['end_date']
+        except Exception as exception:
+            error_message = "Retrieving latest fgt for id={} failed.".format(id_)
+            logger.error(error_message)
+            traceback.print_exc()
+            raise exception
+        finally:
+            if connection is not None:
+                connection.close()
+
+    def get_end_date(self, sim_tag, station_id, source_id, variable_id, unit_id):
+
+        """
+        Retrieve the latest fgt of fcst timeseries available for the given parameters
+        :param sim_tag:
+        :param station_id:
+        :param source_id:
+        :param variable_id:
+        :param unit_id:
+        :return:
+        """
+
+        connection = self.pool.connection()
+        try:
+            with connection.cursor() as cursor1:
+                sql_statement = "SELECT `end_date` FROM `run` WHERE `source`=%s AND `station`=%s " \
+                                "AND `sim_tag`=%s AND `variable`=%s AND `unit`=%s;"
+                is_exist = cursor1.execute(sql_statement, (source_id, station_id, sim_tag, variable_id, unit_id))
+                if is_exist > 0:
+                    return cursor1.fetchone()['end_date']
+                else:
+                    return None
+
+        except Exception as exception:
+            error_message = "Retrieving latest fgt failed."
+            logger.error(error_message)
+            traceback.print_exc()
+            raise exception
+        finally:
+            if connection is not None:
+                connection.close()
+
+    def update_start_date(self, id_, start_date, force=False):
         """
             Update (very first fgt) start_date for inserted timeseries, if new start_date is earlier than the existing
             :param id_: timeseries id
@@ -348,29 +406,35 @@ class Timeseries:
         if type(start_date) is str:
             start_date = datetime.strptime(start_date, COMMON_DATE_TIME_FORMAT)
 
-        existing_start_date = None
-
         try:
 
-            with connection.cursor() as cursor:
-                sql_statement = "SELECT `start_date` FROM `run` WHERE `id`=%s"
-                row_count= cursor.execute(sql_statement, id_)
-                if row_count > 0:
-                    existing_start_date = cursor.fetchone()['start_date']
+            if not force:
+                existing_start_date = None
 
-            if existing_start_date is None or existing_start_date > start_date:
-                with connection.cursor() as cursor2:
+                with connection.cursor() as cursor:
+                    sql_statement = "SELECT `start_date` FROM `run` WHERE `id`=%s"
+                    row_count= cursor.execute(sql_statement, id_)
+                    if row_count > 0:
+                        existing_start_date = cursor.fetchone()['start_date']
+
+                if existing_start_date is None or existing_start_date > start_date:
+                    with connection.cursor() as cursor2:
+                        sql_statement = "UPDATE `run` SET `start_date`=%s WHERE `id`=%s"
+                        cursor2.execute(sql_statement, (start_date, id_))
+
+            else:
+                with connection.cursor() as cursor3:
                     sql_statement = "UPDATE `run` SET `start_date`=%s WHERE `id`=%s"
-                    cursor2.execute(sql_statement, (start_date, id_))
+                    cursor3.execute(sql_statement, (start_date, id_))
 
             connection.commit()
             return
-        except Exception as ex:
+        except Exception as exception:
             connection.rollback()
             error_message = "Updating start_date for id={} failed.".format(id_)
             logger.error(error_message)
             traceback.print_exc()
-            raise DatabaseAdapterError(error_message, ex)
+            raise exception
         finally:
             if connection is not None:
                 connection.close()
@@ -418,11 +482,124 @@ class Timeseries:
                             ts.append([result.get('time'), result.get('value')])
             return ts
 
-        except Exception as ex:
+        except Exception as exception:
             error_message = "Retrieving latest timeseries failed."
             logger.error(error_message)
             traceback.print_exc()
-            raise DatabaseAdapterError(error_message, ex)
+            raise exception
+        finally:
+            if connection is not None:
+                connection.close()
+
+    def get_nearest_timeseries(self, sim_tag, station_id, source_id, variable_id, unit_id, expected_fgt, start=None):
+
+        """
+        Retrieve the fcst timeseries nearest to the specified expected fgt and available for the given parameters.
+        :param sim_tag:
+        :param station_id:
+        :param source_id:
+        :param variable_id:
+        :param unit_id:
+        :param expected_fgt:
+        :param start: expected beginning of the timeseries
+        :return: return list of lists with time, value pairs [[time, value], [time1, value2]]
+        """
+
+        meta_data = {}
+        ts = []
+        connection = self.pool.connection()
+        try:
+            with connection.cursor() as cursor1:
+                sql_statement = "SELECT `id`, `end_date` FROM `run` WHERE `source`=%s AND `station`=%s " \
+                                "AND `sim_tag`=%s AND `variable`=%s AND `unit`=%s;"
+                is_exist = cursor1.execute(sql_statement, (source_id, station_id, sim_tag, variable_id, unit_id))
+                if is_exist > 0:
+                    meta_data = cursor1.fetchone()
+                else:
+                    return None
+
+            with connection.cursor() as cursor3:
+                cursor3.callproc('getNearestFGTs', (meta_data.get('id'), expected_fgt))
+                fgt = cursor3.fetchone()['fgt']
+                if fgt is None:
+                    return None
+
+            if start:
+                with connection.cursor() as cursor2:
+                    sql_statement = "SELECT `time`, `value` FROM `data` WHERE `id`=%s AND `fgt`=%s AND `time` >= %s;"
+                    rows = cursor2.execute(sql_statement, (meta_data.get('id'), fgt, start))
+                    if rows > 0:
+                        results = cursor2.fetchall()
+                        for result in results:
+                            ts.append([result.get('time'), result.get('value')])
+            else:
+                with connection.cursor() as cursor2:
+                    sql_statement = "SELECT `time`, `value` FROM `data` WHERE `id`=%s AND `fgt`=%s;"
+                    rows = cursor2.execute(sql_statement, (meta_data.get('id'), fgt))
+                    if rows > 0:
+                        results = cursor2.fetchall()
+                        for result in results:
+                            ts.append([result.get('time'), result.get('value')])
+            return ts
+
+        except Exception as exception:
+            error_message = "Retrieving latest timeseries failed."
+            logger.error(error_message)
+            traceback.print_exc()
+            raise exception
+        finally:
+            if connection is not None:
+                connection.close()
+
+    def delete_timeseries(self, id_, fgt):
+        """
+        Delete specific timeseries identified by hash id and a fgt
+        :param id_: hash id
+        :param fgt: fgt
+        :return:
+        """
+
+        connection = self.pool.connection()
+        try:
+
+            with connection.cursor() as cursor:
+                sql_statement = "DELETE FROM `curw_fcst`.`data` WHERE `id`= %s AND `fgt`=%s ;"
+                row_count = cursor.execute(sql_statement, (id_, fgt))
+
+            connection.commit()
+            return row_count
+        except Exception as exception:
+            connection.rollback()
+            error_message = "Deletion of timeseries with hash id {} failed".format(id_)
+            logger.error(error_message)
+            traceback.print_exc()
+            raise exception
+        finally:
+            if connection is not None:
+                connection.close()
+
+    def delete_all_by_hash_id(self, id_):
+        """
+        Delete all timeseries with different fgts but with the same hash id (same meta data)
+        :param id_: hash id
+        :return:
+        """
+
+        connection = self.pool.connection()
+        try:
+
+            with connection.cursor() as cursor:
+                sql_statement = "DELETE FROM `curw_fcst`.`run` WHERE `id`= %s ;"
+                row_count = cursor.execute(sql_statement, id_)
+
+            connection.commit()
+            return row_count
+        except Exception as exception:
+            connection.rollback()
+            error_message = "Deletion of timeseries with hash id {} failed".format(id_)
+            logger.error(error_message)
+            traceback.print_exc()
+            raise exception
         finally:
             if connection is not None:
                 connection.close()

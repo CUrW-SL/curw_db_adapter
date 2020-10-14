@@ -37,11 +37,11 @@ def get_station_by_id(pool, id_):
                 return cursor.fetchone()
             else:
                 return None
-    except Exception as ex:
+    except Exception as exception:
         error_message = "Retrieving station with station_id {} failed".format(id_)
         logger.error(error_message)
         traceback.print_exc()
-        raise DatabaseAdapterError(error_message, ex)
+        raise exception
     finally:
         if connection is not None:
             connection.close()
@@ -75,12 +75,12 @@ def get_station_id(pool, latitude, longitude, station_type) -> str:
                 return cursor.fetchone()['id']
             else:
                 return None
-    except Exception as ex:
+    except Exception as exception:
         error_message = "Retrieving station id: latitude={}, longitude={}, and station_type{} failed."\
             .format(latitude, longitude, station_type)
         logger.error(error_message)
         traceback.print_exc()
-        raise DatabaseAdapterError(error_message, ex)
+        raise exception
     finally:
         if connection is not None:
             connection.close()
@@ -136,13 +136,13 @@ def add_station(pool, name, latitude, longitude, description, station_type):
             logger.info("Station with latitude={} longitude={} and station_type={} already exists in the database"
                 .format(latitude, longitude, station_type))
             return False
-    except Exception as ex:
+    except Exception as exception:
         connection.rollback()
         error_message = "Insertion of station: name={}, latitude={}, longitude={}, description={}, " \
                         "and station_type={} failed.".format(name, latitude, longitude, description, station_type)
         logger.error(error_message)
         traceback.print_exc()
-        raise DatabaseAdapterError(error_message, ex)
+        raise exception
     finally:
         if connection is not None:
             connection.close()
@@ -201,13 +201,13 @@ def delete_station(pool, latitude, longitude, station_type):
                 logger.info("There's no record of station in the database with latitude={}, "
                             "longitude={}, and station_type{}".format(latitude, longitude, station_type))
                 return False
-    except Exception as ex:
+    except Exception as exception:
         connection.rollback()
         error_message = "Deleting station with latitude={}, longitude={}, and station_type{} failed."\
             .format(latitude, longitude, station_type)
         logger.error(error_message)
         traceback.print_exc()
-        raise DatabaseAdapterError(error_message, ex)
+        raise exception
     finally:
         if connection is not None:
             connection.close()
@@ -232,12 +232,12 @@ def delete_station_by_id(pool, id_):
             else:
                 logger.info("There's no record of station in the database with the station id {}".format(id_))
                 return False
-    except Exception as ex:
+    except Exception as exception:
         connection.rollback()
         error_message = "Deleting station with id {} failed.".format(id_)
         logger.error(error_message)
         traceback.print_exc()
-        raise DatabaseAdapterError(error_message, ex)
+        raise exception
     finally:
         if connection is not None:
             connection.close()
@@ -264,12 +264,12 @@ def add_wrf_stations(pool):
             row_count = cursor.executemany(sql_statement, data)
         connection.commit()
         return row_count
-    except Exception as ex:
+    except Exception as exception:
         connection.rollback()
         error_message = "Insertion of wrf stations failed."
         logger.error(error_message)
         traceback.print_exc()
-        raise DatabaseAdapterError(error_message, ex)
+        raise exception
     finally:
         if connection is not None:
             connection.close()
@@ -297,11 +297,11 @@ def get_wrf_stations(pool):
                 return wrfv3_stations
             else:
                 return None
-    except Exception as ex:
+    except Exception as exception:
         error_message = "Retrieving wrf stations failed"
         logger.error(error_message)
         traceback.print_exc()
-        raise DatabaseAdapterError(error_message, ex)
+        raise exception
     finally:
         if connection is not None:
             connection.close()
@@ -313,7 +313,7 @@ def get_flo2d_output_stations(pool, flo2d_model):
     Retrieve ids of wrf_v3 stations, for each station name
     :param flo2d_model: StationEnum describing the flo2d model
     :param pool: database connection pool
-    :return: dictionary with keys of type "<cell_id>" and [list of station id, latitude and longitude] as the value
+    :return: dictionary with keys of type "<cell_id>" and [list of station id, latitude, longitude and station name] as the value
     """
 
     flo2d_output_stations = {}
@@ -328,15 +328,18 @@ def get_flo2d_output_stations(pool, flo2d_model):
             if row_count > 0:
                 results = cursor.fetchall()
                 for dict in results:
-                    flo2d_output_stations[dict.get("name").split("_")[0]] = [dict.get("id"), dict.get("latitude"), dict.get("longitude")]
+                    station_name = dict.get("name")
+                    flo2d_output_stations[station_name.split("_")[0]] = [dict.get("id"), dict.get("latitude"),
+                                                                             dict.get("longitude"),
+                                                                             '_'.join(station_name.split('_')[1:])]
                 return flo2d_output_stations
             else:
                 return None
-    except Exception as ex:
+    except Exception as exception:
         error_message = "Retrieving flo2d output stations failed"
         logger.error(error_message)
         traceback.print_exc()
-        raise DatabaseAdapterError(error_message, ex)
+        raise exception
     finally:
         if connection is not None:
             connection.close()
@@ -364,11 +367,43 @@ def get_hechms_stations(pool):
                 return hechms_stations
             else:
                 return None
-    except Exception as ex:
+    except Exception as exception:
         error_message = "Retrieving hechms stations failed"
         logger.error(error_message)
         traceback.print_exc()
-        raise DatabaseAdapterError(error_message, ex)
+        raise exception
+    finally:
+        if connection is not None:
+            connection.close()
+
+
+def get_mike_stations(pool):
+
+    """
+    Retrieve ids of mike11 stations, for each station name
+    :param pool: database connection pool
+    :return: dictionary with station names as keys and list of station [name, latitude and longitude] as the value
+    """
+
+    mike_stations = {}
+
+    connection = pool.connection()
+    try:
+        with connection.cursor() as cursor:
+            sql_statement = "SELECT * FROM `station` WHERE `id` like %s"
+            row_count = cursor.execute(sql_statement, "18_____")
+            if row_count > 0:
+                results = cursor.fetchall()
+                for dict in results:
+                    mike_stations[dict.get("name")] = [dict.get("id"), dict.get("latitude"), dict.get("longitude")]
+                return mike_stations
+            else:
+                return None
+    except Exception as exception:
+        error_message = "Retrieving mike stations failed"
+        logger.error(error_message)
+        traceback.print_exc()
+        raise exception
     finally:
         if connection is not None:
             connection.close()
