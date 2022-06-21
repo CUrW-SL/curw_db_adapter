@@ -21,7 +21,7 @@ setuptools.setup(
                 ],
         install_requires=['PyMySQL==0.9.3',
                           'pandas==0.24.2',
-                          'numpy==1.16.2',
+                          'numpy==1.22.0',
                           'PyYAML==5.1',
                           'aenum==2.1.2',
                           'DBUtils==1.3'],
